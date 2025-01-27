@@ -1,0 +1,21 @@
+{
+    "name": "pc/task_making_framework",
+    "description": "its a framework for task",
+    "type": "project",
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/",
+            "Core\\": "core/"
+        },
+        "files": [
+            "app/helper.php"
+        ]
+    },
+    "authors": [
+        {
+            "name": "someone"
+        }
+    ],
+    "minimum-stability": "alpha",
+    "require": {}
+}
