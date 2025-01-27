@@ -2,6 +2,9 @@
 
 use Core\Base\Route;
 
+define('ROOT', dirname(__DIR__));
+define('VIEWS', ROOT . '/views/');
+
 class Bootstrap
 {
     protected $routes = [];
@@ -51,7 +54,17 @@ class Bootstrap
             $this->databaseInit();
             $this->routesInit();
         } catch (\Throwable $th) {
-            throw $th;
+            $data = [
+                'message' => $th->getMessage(),
+                'code' => $th->getCode(),
+                'file' => $th->getFile(),
+                'line' => $th->getLine(),
+                'trace' => $th->getTraceAsString(),
+            ];
+            if(VIEWS && file_exists(VIEWS . 'errors/error.smile.php')) {
+                return view('errors/error',$data);
+            }
+            return require_once __DIR__ . '/views/errors/error.smile.php';
         }
     }
 }
