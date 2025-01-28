@@ -1,99 +1,103 @@
 <?php
+
 namespace Core\Base;
 
 use Exception;
 
 class Route
 {
-    protected static $routes = [];
+    protected static array $routes = [];
 
-    public static function get($route, $callback, $middlewares = [])
+    public static function get(string $route, callable|array $callback, array $middlewares = []): void
     {
-        // Validate that middlewares is an array
-        if (! is_array($middlewares)) {
-            throw new Exception("Middlewares must be an array", 500);
-        }
-
-        $controller  = null;
-        $params      = [];
-        $route_parts = explode('/', $route);
-        foreach ($route_parts as $key => $part) {
-            if (strpos($part, ':') !== false) {
-                 $params[] = $key;
-            }
-        }
-        // Validate and process the callback
-        if (! is_callable($callback) && is_array($callback)) {
-            if (count($callback) !== 2) {
-                throw new Exception("Controller must be an array with 2 elements", 500);
-            }
-            [$controller, $callback] = $callback; // Destructure array for better readability
-        }
-
-        // Add the route to the routes array
-        self::$routes[$route] = [
-            'method'      => 'GET',
-            'callback'    => $callback,
-            'middlewares' => $middlewares,
-            'controller'  => $controller,
-            'params'      => $params,
-        ];
+        self::addRoute('GET', $route, $callback, $middlewares);
     }
 
-    public static function post($route, $callback, $middlewares = [])
+    public static function post(string $route, callable|array $callback, array $middlewares = []): void
     {
-        // Validate that middlewares is an array
-        if (! is_array($middlewares)) {
-            throw new Exception("Middlewares must be an array", 500);
+        self::addRoute('POST', $route, $callback, $middlewares);
+    }
+
+    protected static function addRoute(string $method, string $route, callable|array $callback, array $middlewares): void
+    {
+        $params = [];
+        $routeParts = explode('/', $route);
+
+        foreach ($routeParts as $key => $part) {
+            if (strpos($part, ':') === 0) {
+                $params[] = $key; // Capture parameter indices
+            }
         }
 
         $controller = null;
-        $params     = [];
 
-        // Validate and process the callback
-        if (! is_callable($callback) && is_array($callback)) {
+        if (!is_callable($callback) && is_array($callback)) {
             if (count($callback) !== 2) {
-                throw new Exception("Controller must be an array with 2 elements", 500);
+                throw new Exception("Controller callback must be an array with 2 elements (class, method).", 500);
             }
-            [$controller, $callback] = $callback; // Destructure array for better readability
+            [$controller, $callback] = $callback;
         }
 
-        // Add the route to the routes array
         self::$routes[$route] = [
-            'method'      => 'POST',
-            'callback'    => $callback,
+            'method' => $method,
+            'callback' => $callback,
             'middlewares' => $middlewares,
-            'controller'  => $controller,
-            'params'      => $params,
-
+            'controller' => $controller,
+            'params' => $params,
         ];
     }
 
-    public static function run()
+    public static function run(): void
     {
-        $route  = $_SERVER['REQUEST_URI'];
+        $route = strtok($_SERVER['REQUEST_URI'], '?');
         $method = $_SERVER['REQUEST_METHOD'];
-        
-        if (strpos($route, '?') !== false) {
-            $route = explode('?', $route)[0] ?? '/';
-        }
-        dd(self::$routes, $route,$_SERVER, $method);
-        if (! array_key_exists($route, self::$routes)) {
-            throw new \Exception("Route not found: $route", 404);
-        }
-        if ($method !== self::$routes[$route]['method']) {
-            throw new \Exception("Method not allowed: $route", 500);
-        }
-  
-        try {
-            if (self::$routes[$route]['controller']) {
-                $controllerInstance = new self::$routes[$route]['controller'];
-                return call_user_func_array([$controllerInstance, self::$routes[$route]['callback']], []);
+
+        $matchedRoute = null;
+        $routeParams = [];
+
+        foreach (self::$routes as $registeredRoute => $details) {
+            $regex = self::convertToRegex($registeredRoute);
+            if (preg_match($regex, $route, $matches)) {
+                $matchedRoute = $details;
+                $routeParams = array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY);
+                break;
             }
-            return call_user_func(self::$routes[$route]['callback']);
-        } catch (\Throwable $th) {
-            throw new \Exception($th->getMessage(), 500);
         }
 
+        if (!$matchedRoute) {
+            throw new Exception("Route not found: $route", 404);
+        }
+
+        if ($method !== $matchedRoute['method']) {
+            throw new Exception("Method not allowed for route: $route", 405);
+        }
+
+        foreach ($matchedRoute['middlewares'] as $middleware) {
+            if (is_callable($middleware)) {
+                $middleware();
+            } else {
+                throw new Exception("Invalid middleware provided for route: $route", 500);
+            }
+        }
+
+        try {
+            if ($matchedRoute['controller']) {
+                $controllerInstance = new $matchedRoute['controller']();
+                call_user_func_array([$controllerInstance, $matchedRoute['callback']], array_values($routeParams));
+            } else {
+                call_user_func_array($matchedRoute['callback'], array_values($routeParams));
+            }
+        } catch (Exception $e) {
+            throw new Exception("Error executing route callback: " . $e->getMessage(), 500);
+        }
+    }
+
+    protected static function convertToRegex(string $route): string
+    {
+        $pattern = preg_replace_callback('/(:[a-zA-Z0-9_]+)/', function ($matches) {
+            return '(?P<' . substr($matches[0], 1) . '>[^/]+)';
+        }, $route);
+
+        return '/^' . str_replace('/', '\/', $pattern) . '$/';
     }
 }

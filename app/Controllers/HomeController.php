@@ -1,10 +1,11 @@
 <?php
 
 namespace  App\Controllers;
+ use Core\Base\Db; 
+use Core\Base\BaseController;
 
-use App\Base\BaseController;
 
-class HomeController
+class HomeController extends BaseController
 {
     public function index()
     {
@@ -13,5 +14,9 @@ class HomeController
     public function news()
     {
         return view('welcome');
+    }
+    public function details(){
+        $query=Db::query("SELECT * FROM users");
+         return view('welcome');
     }
 }

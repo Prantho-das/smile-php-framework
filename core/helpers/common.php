@@ -16,9 +16,11 @@ if (! function_exists('dd')) {
     function dd()
     {
         $args = func_get_args();
+        $trace = debug_backtrace();
         foreach ($args as $arg) {
             echo '<pre>';
             var_dump($arg);
+            echo "file: " . $trace[0]['file'] . " on line " . $trace[0]['line'] . "\n";
             echo '</pre>';
             echo "<hr>";
         }
@@ -29,6 +31,7 @@ if (! function_exists('dd')) {
 if (! function_exists('view')) {
     function view($view, $data = [])
     {
+        extract($data);
         require_once ROOT . '/views/' . $view . '.smile.php';
     }
 }
@@ -46,10 +49,21 @@ if (! function_exists('request')) {
         }
 
         if ($key) {
-             return $data[$key] ?? $default;
+            return $data[$key] ?? $default;
         }
 
         return $data;
 
+    }
+}
+
+if (! function_exists('config')) {
+    function config($config_name = null, $key = null, $default = null)
+    {
+        if ($config_name && isset($_ENV[$config_name])) {
+            $config = $_ENV[$config_name];
+            return $config[$key] ?? $default;
+        }
+        return $_ENV;
     }
 }

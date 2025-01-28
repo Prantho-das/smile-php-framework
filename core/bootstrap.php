@@ -1,19 +1,22 @@
 <?php
 
+use Core\Base\Db;
 use Core\Base\Route;
+use Core\Contracts\BaseAppContract;
 
 define('ROOT', dirname(__DIR__));
 define('VIEWS', ROOT . '/views/');
 
-class Bootstrap
+class Bootstrap extends BaseAppContract
 {
-    protected $routes = [];
-    protected $config = [];
-    
+    protected $routes     = [];
+    protected $configPath = [];
+    protected $config     = [];
 
     public function __construct($routes = [])
     {
-        $this->routes = $routes;
+        $this->routes     = $routes;
+        $this->configPath = glob(ROOT . '/config/*.php');
     }
     public function helpersInit()
     {
@@ -33,18 +36,23 @@ class Bootstrap
     }
     protected function configInit()
     {
-        foreach ($this->config as $configFile) {
+        foreach ($this->configPath as $configFile) {
 
             if (! file_exists($configFile)) {
                 throw new Exception("Config file not found: $configFile");
             }
-            require_once $configFile;
+            $tempConfigFile            = require_once $configFile;
+            $configFile                = str_replace('.php', '', basename($configFile));
+            $configFile                = str_replace('-', '_', $configFile);
+            $configFile                = str_replace('.', '_', $configFile);
+            $configFile                = strtolower($configFile);
+            $_ENV[$configFile]         = $tempConfigFile;
         }
 
     }
     protected function databaseInit()
     {
-
+        Db::connect();
     }
     public function init()
     {
@@ -54,15 +62,16 @@ class Bootstrap
             $this->databaseInit();
             $this->routesInit();
         } catch (\Throwable $th) {
+            http_response_code($th->getCode());
             $data = [
                 'message' => $th->getMessage(),
-                'code' => $th->getCode(),
-                'file' => $th->getFile(),
-                'line' => $th->getLine(),
-                'trace' => $th->getTraceAsString(),
+                'code'    => $th->getCode(),
+                'file'    => $th->getFile(),
+                'line'    => $th->getLine(),
+                'trace'   => $th->getTraceAsString(),
             ];
-            if(VIEWS && file_exists(VIEWS . 'errors/error.smile.php')) {
-                return view('errors/error',$data);
+            if (VIEWS && file_exists(VIEWS . 'errors/error.smile.php')) {
+                return view('errors/error', $data);
             }
             return require_once __DIR__ . '/views/errors/error.smile.php';
         }
