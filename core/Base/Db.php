@@ -102,7 +102,7 @@ class Db
         return null;
     }
 
-     public static function insert(array $data): int
+    public static function insert(array $data): int
     {
         try {
             if (empty($data)) {
@@ -167,7 +167,7 @@ class Db
         self::query($query, ['id' => $id]);
         return self::$statement->rowCount();
     }
-    private static function getValidColumns(): array
+    public static function getValidColumns(): array
     {
         static $columns = null;
 
@@ -178,6 +178,12 @@ class Db
         }
 
         return $columns;
+    }
+    public function find(int $id,$column='id'): array|null
+    {
+        $query = "SELECT * FROM " . self::$table . " WHERE ".$column." = :id";
+        self::query($query, ['id' => $id]);
+        return self::first();
     }
 
 }

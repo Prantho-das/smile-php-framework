@@ -76,4 +76,49 @@ class Bootstrap extends BaseAppContract
             return require_once __DIR__ . '/views/errors/error.smile.php';
         }
     }
+    public function kernalInit()
+    {
+        try {
+            $this->helpersInit();
+            $this->configInit();
+            $this->runCommands();
+        } catch (\Throwable $th) {
+            echo $th->getMessage();
+        }
+        exit;
+    }
+   public function runCommands()
+{
+    global $argv;
+    $port = 5000;
+    $command = null;
+
+    // Loop through arguments to find the port or commands
+    foreach ($argv as $arg) {
+        if (str_contains($arg, '--port')) {
+            // Get port from the argument
+            $port = explode('=', $arg)[1];
+        } elseif ($arg === 'run') {
+            // If 'run' is the command, set the php server command
+            $command = 'php -S localhost:' . $port;
+        } elseif ($arg === 'smile-me') {
+            // If 'smile-me' is the command, initialize and handle smile-me
+            if (file_exists(ROOT . '/smile-me.php')) {
+                $smileInit = require_once ROOT . '/app/commands/smile-me.php';
+                $command = $smileInit->handle();
+            } else {
+                echo 'Smile init file not found.';
+                return;
+            }
+        }
+    }
+
+    // Execute the command if set, otherwise output 'Command not found'
+    if ($command) {
+        exec($command);
+    } else {
+        echo 'Command not found';
+    }
+}
+
 }
