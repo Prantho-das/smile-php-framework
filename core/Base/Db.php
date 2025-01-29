@@ -15,11 +15,11 @@ class Db
     public static string $charset  = 'utf8mb4';
     public static ?PDO $connection = null;
     public static $statement = null; // Static statement
+    public static $table = null;
 
     // Static method to set configuration values
     public static function configure(): void
     {
-        // Assuming `config()` function is available to get settings
         self::$host     = config('database', 'host') ?? '';
         self::$username = config('database', 'username') ?? '';
         self::$password = config('database', 'password') ?? '';
@@ -27,33 +27,24 @@ class Db
         self::$charset  = config('database', 'charset') ?? 'utf8mb4';
     }
 
-    /**
-     * Establish a PDO connection to the database
-     * @return PDO|null
-     * @throws Exception
-     */
     public static function connect(): ?PDO
     {
-        // Check if a connection already exists
         if (self::$connection !== null) {
             return self::$connection;
         }
 
-        self::configure(); // Configure the connection
+        self::configure(); 
 
-        // Validate required parameters
         if (self::$host === '' || self::$username === '' || self::$database === '') {
             throw new Exception("Database configuration is incomplete.", 500);
         }
 
-        // Set DSN (Data Source Name)
         $dsn = "mysql:host=" . self::$host . ";dbname=" . self::$database . ";charset=" . self::$charset;
 
         try {
-            // Create a new PDO instance
             self::$connection = new PDO($dsn, self::$username, self::$password, [
                 PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-                 PDO::ATTR_DEFAULT_FETCH_MODE =>  PDO::FETCH_OBJ,
+                PDO::ATTR_DEFAULT_FETCH_MODE =>  PDO::FETCH_OBJ,
                 PDO::ATTR_PERSISTENT         => true, // Optional: Persistent connections
             ]);
         } catch (PDOException $e) {
@@ -64,21 +55,17 @@ class Db
         return self::$connection;
     }
 
-    /**
-     * Disconnect the PDO connection
-     */
+
     public static function disconnect(): void
     {
         self::$connection = null;
     }
-
-    /**
-     * Perform a query with parameters
-     * @param string $query SQL query
-     * @param array $params Query parameters
-     * @return Db Returns the current Db instance for method chaining
-     * @throws Exception
-     */
+    public static function table(string $table): Db
+    {
+        self::$table = $table;
+        return new self();
+    }
+  
     public static function query(string $query, array $params = []): Db
     {
         if (self::$connection === null) {
@@ -92,10 +79,7 @@ class Db
         return new self();
     }
 
-    /**
-     * Fetch all rows from the query
-     * @return array
-     */
+
     public static function all(): array
     {
         if (self::$statement === null) {
@@ -105,28 +89,95 @@ class Db
         return self::$statement->fetchAll(PDO::FETCH_OBJ);
     }
 
-    /**
-     * Fetch a single row from the query
-     * @return array|null
-     */
-
-    /**
-     * Fetch the first result of the query
-     * @return array|null
-     */
     public static function first(): array|null
     {
         if (self::$statement === null) {
             return null;
         }
-
         $result = self::$statement->fetch(PDO::FETCH_OBJ);
-
-        // If there's at least one row, return it
         if ($result) {
             return $result;
         }
 
         return null;
     }
+
+     public static function insert(array $data): int
+    {
+        try {
+            if (empty($data)) {
+                throw new Exception("No data provided for insert", 400);
+            }
+
+            // Validate column names
+            $validColumns = self::getValidColumns();
+            $filteredData = [];
+
+            foreach ($data as $key => $value) {
+                if (!in_array($key, $validColumns, true)) {
+                    throw new Exception("Invalid column name: $key", 400);
+                }
+                $filteredData[$key] = $value;
+            }
+
+            $fields = implode('`, `', array_keys($filteredData));
+            $placeholders = ':' . implode(', :', array_keys($filteredData));
+
+            $query = "INSERT INTO " . self::$table . " (`$fields`) VALUES ($placeholders)";
+            self::query($query, $filteredData);
+
+            return (int) self::$connection->lastInsertId();
+        } catch (Exception $e) {
+            throw new Exception($e->getMessage(), 500);
+        }
+    }
+
+    public static function update(array $data, int $id): int
+    {
+        try {
+            if (empty($data)) {
+                throw new Exception("No data provided for update", 400);
+            }
+
+            $validColumns = self::getValidColumns();
+            $fields = [];
+            $params = [];
+
+            foreach ($data as $key => $value) {
+                if (!in_array($key, $validColumns, true)) {
+                    throw new Exception("Invalid column name: $key", 400);
+                }
+                $fields[] = "`$key` = :$key";
+                $params[$key] = $value;
+            }
+
+            $params['id'] = $id;
+            $query = "UPDATE " . self::$table . " SET " . implode(', ', $fields) . " WHERE id = :id";
+
+            self::query($query, $params);
+            return self::$statement->rowCount();
+        } catch (Exception $e) {
+            throw new Exception($e->getMessage(), 500);
+        }
+    }
+
+   public static function delete(int $id): int
+    {
+        $query = "DELETE FROM " . self::$table . " WHERE id = :id";
+        self::query($query, ['id' => $id]);
+        return self::$statement->rowCount();
+    }
+    private static function getValidColumns(): array
+    {
+        static $columns = null;
+
+        if ($columns === null) {
+            $query = "SHOW COLUMNS FROM " . self::$table;
+            self::query($query);
+            $columns = self::$statement->fetchAll(PDO::FETCH_COLUMN);
+        }
+
+        return $columns;
+    }
+
 }
