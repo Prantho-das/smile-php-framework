@@ -11,6 +11,12 @@ if (! function_exists('response')) {
         echo json_encode($data);
     }
 }
+if (! function_exists('redirect')) {
+    function redirect($url='/')
+    {   
+         return header('Location: '.$url);
+    }
+}
 
 if (! function_exists('dd')) {
     function dd()

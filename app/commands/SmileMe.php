@@ -1,5 +1,5 @@
 <?php
-namespace Core\Base;
+namespace App\Controllers\Commands;
 
 use Core\Contracts\BaseCommand;
 

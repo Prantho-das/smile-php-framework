@@ -67,7 +67,7 @@ class Db
     public static function query(string $query, array $params = []): self
     {
         if (self::$connection === null) {
-            self::connect();
+            throw new Exception("Database connection failed", 500);
         }
 
         self::$statement = self::$connection->prepare($query);
@@ -83,7 +83,15 @@ class Db
 
     public function first(): ?object
     {
-        return self::$statement ? self::$statement->fetch() : null;
+    if(!self::$statement){
+        throw new Exception("Database connection failed", 500);
+
+    }
+        $fetchData=self::$statement->fetch();
+        if($fetchData){
+            return $fetchData;
+        }
+         return null;
     }
 
     public function insert(array $data): int

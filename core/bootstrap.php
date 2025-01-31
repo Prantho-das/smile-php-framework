@@ -2,6 +2,7 @@
 
 use Core\Base\Db;
 use Core\Base\Route;
+use Core\Base\Session;
 use Core\Contracts\BaseAppContract;
 
 define('ROOT', dirname(__DIR__));
@@ -12,6 +13,7 @@ class Bootstrap extends BaseAppContract
     protected $routes     = [];
     protected $configPath = [];
     protected $config     = [];
+
 
     public function __construct($routes = [])
     {
@@ -50,6 +52,9 @@ class Bootstrap extends BaseAppContract
         }
 
     }
+    public function sessionInit(){
+         Session::init();
+    }
     protected function databaseInit()
     {
         Db::connect();
@@ -57,6 +62,7 @@ class Bootstrap extends BaseAppContract
     public function init()
     {
         try {
+            $this->sessionInit();
             $this->helpersInit();
             $this->configInit();
             $this->databaseInit();
