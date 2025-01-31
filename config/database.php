@@ -2,8 +2,8 @@
 
 
 return [
-   'host' => 'localhost',
-   'database' => 'taskmaking',
+   'host' => '',
+   'database' => '',
    'username' => 'root',
    'password' => '',
    'charset' => 'utf8mb4',

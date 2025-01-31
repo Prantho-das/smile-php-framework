@@ -1,23 +1,22 @@
-<?php 
-
+<?php
 namespace Core\Base;
 
 use Exception;
 use PDO;
 use PDOException;
+use PDOStatement;
 
 class Db
 {
-    public static string $host     = '';
-    public static string $username = '';
-    public static string $password = '';
-    public static string $database = '';
-    public static string $charset  = 'utf8mb4';
-    public static ?PDO $connection = null;
-    public static $statement = null; // Static statement
-    public static $table = null;
+    protected static string $host     = '';
+    protected static string $username = '';
+    protected static string $password = '';
+    protected static string $database = '';
+    protected static string $charset  = 'utf8mb4';
+    protected static ?PDO $connection = null;
+    protected static ?PDOStatement  $statement = null;
+    protected static ?string $table = null;
 
-    // Static method to set configuration values
     public static function configure(): void
     {
         self::$host     = config('database', 'host') ?? '';
@@ -33,10 +32,10 @@ class Db
             return self::$connection;
         }
 
-        self::configure(); 
+        self::configure();
 
-        if (self::$host === '' || self::$username === '' || self::$database === '') {
-            throw new Exception("Database configuration is incomplete.", 500);
+        if (empty(self::$host) || empty(self::$username) || empty(self::$database)) {
+            return null;
         }
 
         $dsn = "mysql:host=" . self::$host . ";dbname=" . self::$database . ";charset=" . self::$charset;
@@ -44,146 +43,126 @@ class Db
         try {
             self::$connection = new PDO($dsn, self::$username, self::$password, [
                 PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE =>  PDO::FETCH_OBJ,
-                PDO::ATTR_PERSISTENT         => true, // Optional: Persistent connections
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ,
+                PDO::ATTR_PERSISTENT         => true,
             ]);
         } catch (PDOException $e) {
-            // Throw an exception with a custom message
             throw new Exception("Database connection failed: " . $e->getMessage(), 500);
         }
 
         return self::$connection;
     }
 
-
     public static function disconnect(): void
     {
         self::$connection = null;
     }
-    public static function table(string $table): Db
+
+    public static function table(string $table): self
     {
         self::$table = $table;
         return new self();
     }
-  
-    public static function query(string $query, array $params = []): Db
+
+    public static function query(string $query, array $params = []): self
     {
         if (self::$connection === null) {
-            throw new Exception("Database connection failed", 500);
+            self::connect();
         }
 
-        // Prepare and execute the query with parameters
         self::$statement = self::$connection->prepare($query);
         self::$statement->execute($params);
 
         return new self();
     }
 
-
-    public static function all(): array
+    public function all(): array
     {
-        if (self::$statement === null) {
-            return [];
-        }
-
-        return self::$statement->fetchAll(PDO::FETCH_OBJ);
+        return self::$statement ? self::$statement->fetchAll() : [];
     }
 
-    public static function first(): array|null
+    public function first(): ?object
     {
-        if (self::$statement === null) {
-            return null;
-        }
-        $result = self::$statement->fetch(PDO::FETCH_OBJ);
-        if ($result) {
-            return $result;
-        }
-
-        return null;
+        return self::$statement ? self::$statement->fetch() : null;
     }
 
-    public static function insert(array $data): int
+    public function insert(array $data): int
     {
-        try {
-            if (empty($data)) {
-                throw new Exception("No data provided for insert", 400);
-            }
-
-            // Validate column names
-            $validColumns = self::getValidColumns();
-            $filteredData = [];
-
-            foreach ($data as $key => $value) {
-                if (!in_array($key, $validColumns, true)) {
-                    throw new Exception("Invalid column name: $key", 400);
-                }
-                $filteredData[$key] = $value;
-            }
-
-            $fields = implode('`, `', array_keys($filteredData));
-            $placeholders = ':' . implode(', :', array_keys($filteredData));
-
-            $query = "INSERT INTO " . self::$table . " (`$fields`) VALUES ($placeholders)";
-            self::query($query, $filteredData);
-
-            return (int) self::$connection->lastInsertId();
-        } catch (Exception $e) {
-            throw new Exception($e->getMessage(), 500);
+        if (empty($data)) {
+            throw new Exception("No data provided for insert", 400);
         }
+
+        $validColumns = self::getValidColumns();
+        $filteredData = array_intersect_key($data, array_flip($validColumns));
+
+        if (empty($filteredData)) {
+            throw new Exception("No valid columns provided", 400);
+        }
+
+        $fields       = implode('`, `', array_keys($filteredData));
+        $placeholders = ':' . implode(', :', array_keys($filteredData));
+
+        $query = "INSERT INTO " . self::$table . " (`$fields`) VALUES ($placeholders)";
+        self::query($query, $filteredData);
+
+        return (int) self::$connection->lastInsertId();
     }
 
-    public static function update(array $data, int $id): int
+    public function update(array $data, int $id): int
     {
-        try {
-            if (empty($data)) {
-                throw new Exception("No data provided for update", 400);
-            }
-
-            $validColumns = self::getValidColumns();
-            $fields = [];
-            $params = [];
-
-            foreach ($data as $key => $value) {
-                if (!in_array($key, $validColumns, true)) {
-                    throw new Exception("Invalid column name: $key", 400);
-                }
-                $fields[] = "`$key` = :$key";
-                $params[$key] = $value;
-            }
-
-            $params['id'] = $id;
-            $query = "UPDATE " . self::$table . " SET " . implode(', ', $fields) . " WHERE id = :id";
-
-            self::query($query, $params);
-            return self::$statement->rowCount();
-        } catch (Exception $e) {
-            throw new Exception($e->getMessage(), 500);
+        if (empty($data)) {
+            throw new Exception("No data provided for update", 400);
         }
+
+        $validColumns = self::getValidColumns();
+        $filteredData = array_intersect_key($data, array_flip($validColumns));
+
+        if (empty($filteredData)) {
+            throw new Exception("No valid columns provided", 400);
+        }
+
+        $fields = implode(', ', array_map(fn($key) => "`$key` = :$key", array_keys($filteredData)));
+        $filteredData['id'] = $id;
+
+        $query = "UPDATE " . self::$table . " SET $fields WHERE id = :id";
+        self::query($query, $filteredData);
+        
+        return self::$statement->rowCount();
     }
 
-   public static function delete(int $id): int
+    public function delete(int $id): int
     {
         $query = "DELETE FROM " . self::$table . " WHERE id = :id";
         self::query($query, ['id' => $id]);
         return self::$statement->rowCount();
     }
-    public static function getValidColumns(): array
-    {
-        static $columns = null;
 
-        if ($columns === null) {
+    protected static function getValidColumns(): array
+    {
+        static $columns = [];
+
+        if (!isset($columns[self::$table])) {
             $query = "SHOW COLUMNS FROM " . self::$table;
             self::query($query);
-            $columns = self::$statement->fetchAll(PDO::FETCH_COLUMN);
+            $columns[self::$table] = self::$statement->fetchAll(PDO::FETCH_COLUMN);
         }
 
-        return $columns;
+        return $columns[self::$table] ?? [];
     }
-    public function find(int $id,$column='id'): array|null
+
+    public function find(int $id, string $column = 'id'): ?object
     {
-        $query = "SELECT * FROM " . self::$table . " WHERE ".$column." = :id";
+        $query = "SELECT * FROM " . self::$table . " WHERE `$column` = :id";
         self::query($query, ['id' => $id]);
         return self::first();
     }
 
+    public function paginate(int $count = 10): array
+    {
+        $current_page = max(1, (int) ($_GET['page'] ?? 1));
+        $offset = ($current_page - 1) * $count;
+
+        $query = "SELECT * FROM " . self::$table . " LIMIT $count OFFSET $offset";
+        return self::query($query)->all();
+    }
 }

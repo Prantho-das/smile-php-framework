@@ -13,6 +13,7 @@ class Rule{
     foreach(self::$rules as $field => $rule){
       $rule_array = explode('|', $rule);
       foreach($rule_array as $rule){
+        $rule = trim($rule);
         if($rule == 'required'){
           self::required($field);
         }
